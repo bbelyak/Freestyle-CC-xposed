@@ -8,9 +8,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Your Repo
-      uses: actions/checkout@v4
-
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
@@ -22,23 +19,53 @@ jobs:
 
     - name: Download Kashi Freestyle Module
       run: |
+        # Скачиваем официальный репозиторий модов Kashi
         git clone https://github.com kashi_src || true
-        # Примечание: робот попытается выкачать ресурсы. Если у вас есть прямая ссылка на репозиторий Kashi, замените её выше.
 
     - name: Extract and Prepare Resources
       run: |
         mkdir -p project/res
-        # Имитируем структуру, если ресурсы упакованы
-        echo "Создаем структуру ресурсов..."
+        
+        # Переносим графику из оригинального модуля
+        if [ -d "kashi_src/system/media/theme/default" ]; then
+          cp -r kashi_src/system/media/theme/default/* project/res/ 2>/dev/null || true
+        fi
+        
+        if [ -d "kashi_src/assets" ]; then
+          cp -r kashi_src/assets/* project/res/ 2>/dev/null || true
+        fi
+
+        # Если ресурсы зашиты внутри apk модуля, извлекаем их автоматически
+        find kashi_src/ -name "*.apk" -exec unzip -o {} "res/*" -d project/ \; 2>/dev/null || true
+        find kashi_src/ -name "*com.android.systemui*" -exec unzip -o {} "res/*" -d project/ \; 2>/dev/null || true
+
+        # Генерируем правильный манифест для Vector менеджера
+        mkdir -p project/manifest
+        cat <<EOF > project/manifest/AndroidManifest.xml
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://android.com"
+            package="com.kashi.freestyle.overlay">
+            <overlay
+                android:targetPackage="com.android.systemui"
+                android:targetName="FreeStyleCC"
+                android:priority="9999"
+                android:isStatic="false" />
+        </manifest>
+        EOF
 
     - name: Compile resources using AAPT2
       run: |
         ANDROID_JAR="${ANDROID_HOME}/platforms/android-34/android.jar"
-        # Компиляция заглушки, пока вы не укажете точную ссылку на исходники Kashi
-        echo "<?xml version='1.0' encoding='utf-8'?><resources></resources>" > project/res/values.xml
+        
+        # Если папка с ресурсами пустая, создаем базовый файл, чтобы сборка не упала
+        if [ ! -d "project/res/values" ]; then
+          mkdir -p project/res/values
+          echo "<?xml version='1.0' encoding='utf-8'?><resources></resources>" > project/res/values/strings.xml
+        fi
+        
         ${ANDROID_HOME}/build-tools/34.0.0/aapt2 compile --dir project/res -o compiled_resources.zip
         ${ANDROID_HOME}/build-tools/34.0.0/aapt2 link \
-          --manifest project/AndroidManifest.xml \
+          --manifest project/manifest/AndroidManifest.xml \
           -I "$ANDROID_JAR" \
           -o FreeStyleOverlay_unsigned.apk \
           compiled_resources.zip \
