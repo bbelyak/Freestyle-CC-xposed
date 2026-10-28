@@ -1,0 +1,50 @@
+name: Build Xposed Module
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'zulu'
+
+    - name: Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Prepare
+      run: |
+        mkdir -p app/src/main/assets
+        cp plugin.apk app/src/main/assets/plugin.apk 2>/dev/null || true
+
+    - name: Compile Modules
+      run: |
+        ANDROID_JAR="${ANDROID_HOME}/platforms/android-34/android.jar"
+        mkdir -p obj bin
+        javac -cp "$ANDROID_JAR" -d obj app/src/main/java/com/kashi/freestyle/xposed/HookLoader.java
+        ${ANDROID_HOME}/build-tools/34.0.0/d8 obj/com/kashi/freestyle/xposed/*.class --output bin/
+        mv bin/classes.dex app/src/main/assets/classes.dex 2>/dev/null || mv bin/classes.dex app/classes.dex
+
+    - name: Link APK
+      run: |
+        ANDROID_JAR="${ANDROID_HOME}/platforms/android-34/android.jar"
+        ${ANDROID_HOME}/build-tools/34.0.0/aapt2 compile --dir app/src/main/assets -o assets.zip || true
+        ${ANDROID_HOME}/build-tools/34.0.0/aapt2 link --manifest app/src/main/AndroidManifest.xml -I "$ANDROID_JAR" -o Unsigned.apk assets.zip --auto-add-overlay || true
+
+    - name: Sign
+      run: |
+        keytool -genkey -v -keystore test.keystore -alias test -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=Xposed"
+        ${ANDROID_HOME}/build-tools/34.0.0/apksigner sign --ks test.keystore --ks-pass pass:123456 --out FreeStyle_Xposed.apk Unsigned.apk || true
+
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: FreeStyle-Xposed-Module
+        path: FreeStyle_Xposed.apk
