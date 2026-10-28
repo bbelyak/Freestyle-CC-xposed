@@ -23,14 +23,15 @@ jobs:
       run: |
         mkdir -p app/src/main/assets
         cp plugin.apk app/src/main/assets/plugin.apk 2>/dev/null || true
+        wget -q https://xposed.info -O xposed.jar
 
     - name: Compile Modules
       run: |
         ANDROID_JAR="${ANDROID_HOME}/platforms/android-34/android.jar"
         mkdir -p obj bin
-        javac -cp "$ANDROID_JAR" -d obj app/src/main/java/com/kashi/freestyle/xposed/HookLoader.java
-        ${ANDROID_HOME}/build-tools/34.0.0/d8 obj/com/kashi/freestyle/xposed/*.class --output bin/
-        mv bin/classes.dex app/src/main/assets/classes.dex 2>/dev/null || mv bin/classes.dex app/classes.dex
+        javac -cp "$ANDROID_JAR:xposed.jar" -d obj app/src/main/java/com/kashi/freestyle/xposed/HookLoader.java
+        ${ANDROID_HOME}/build-tools/34.0.0/d8 obj/com/kashi/freestyle/xposed/*.class --lib "$ANDROID_JAR" --output bin/
+        mv bin/classes.dex app/src/main/assets/classes.dex
 
     - name: Link APK
       run: |
